@@ -1,74 +1,75 @@
 package com.xantamlock.core.tool;
 
 import com.xantamlock.core.lock.Lock;
+import com.xantamlock.core.lock.LockFocusTracker;
 import com.xantamlock.core.lock.LockManager;
+
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
 
 public class VisualiserHandler {
 
-    private static final Set<UUID> visualising = new HashSet<>();
-    private static final Map<UUID, BukkitRunnable> tasks = new HashMap<>();
+    private static final Map<UUID, Integer> activeVisuals = new HashMap<>();
 
-    public static void toggleVisual(Player player, boolean on) {
+    public static void toggleVisual(Player player, boolean enable) {
         UUID uuid = player.getUniqueId();
-        if (on) {
-            if (visualising.contains(uuid)) return;
-            visualising.add(uuid);
-            startTask(player);
+
+        if (enable) {
+            if (activeVisuals.containsKey(uuid)) return;
+
+            Lock lock = LockManager.getFocusedLock(uuid);
+            if (lock == null || lock.getParts().isEmpty()) {
+                player.sendMessage(color("&6[XantamLock]&c No focused lock or no parts to visualise."));
+                return;
+            }
+
+            int taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(
+                    Bukkit.getPluginManager().getPlugin("XantamLock"), () -> {
+                        for (String locString : lock.getParts()) {
+                            Location loc = deserialize(locString);
+                            if (loc != null) {
+                                loc.getWorld().spawnParticle(Particle.HEART, loc.clone().add(0.5, 1.2, 0.5), 4, 0.3, 0.3, 0.3, 0);
+                            }
+                        }
+                    },
+                    0L, 20L // every second
+            );
+
+            activeVisuals.put(uuid, taskId);
         } else {
-            visualising.remove(uuid);
-            stopTask(uuid);
+            if (activeVisuals.containsKey(uuid)) {
+                Bukkit.getScheduler().cancelTask(activeVisuals.remove(uuid));
+            }
         }
     }
 
-    public static boolean isVisualising(UUID uuid) {
-        return visualising.contains(uuid);
+    public static void stopAll() {
+        for (int taskId : activeVisuals.values()) {
+            Bukkit.getScheduler().cancelTask(taskId);
+        }
+        activeVisuals.clear();
     }
 
-    private static void startTask(Player player) {
-        UUID uuid = player.getUniqueId();
-
-        BukkitRunnable task = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!visualising.contains(uuid)) {
-                    cancel();
-                    return;
-                }
-
-                Lock lock = LockManager.getFocusedLock(uuid);
-                if (lock == null) return;
-
-                for (String locStr : lock.getParts()) {
-                    String[] parts = locStr.split(",");
-                    if (parts.length < 4) continue;
-
-                    Location loc = new Location(
-                            Bukkit.getWorld(parts[0]),
-                            Integer.parseInt(parts[1]) + 0.5,
-                            Integer.parseInt(parts[2]) + 1.2,
-                            Integer.parseInt(parts[3]) + 0.5
-                    );
-
-                    if (loc.getWorld() != null) {
-                        player.spawnParticle(Particle.HEART, loc, 1, 0, 0, 0, 0);
-                    }
-                }
-            }
-        };
-
-        task.runTaskTimer(com.xantamlock.core.XantamLock.getInstance(), 0L, 40L);
-        tasks.put(uuid, task);
+    private static Location deserialize(String locString) {
+        try {
+            String[] split = locString.split(",");
+            if (split.length != 4) return null;
+            World world = Bukkit.getWorld(split[0]);
+            int x = Integer.parseInt(split[1]);
+            int y = Integer.parseInt(split[2]);
+            int z = Integer.parseInt(split[3]);
+            return new Location(world, x, y, z);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    private static void stopTask(UUID uuid) {
-        BukkitRunnable task = tasks.remove(uuid);
-        if (task != null) task.cancel();
+    private static String color(String msg) {
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&', msg);
     }
 }
