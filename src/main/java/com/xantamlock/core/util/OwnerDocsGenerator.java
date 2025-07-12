@@ -1,7 +1,8 @@
 package com.xantamlock.core.util;
 
+import com.xantamlock.core.XantamLock;
+import com.xantamlock.core.config.ConfigManager;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -9,73 +10,70 @@ import java.io.IOException;
 
 public class OwnerDocsGenerator {
 
-    private final Plugin plugin;
+    private final XantamLock plugin;
 
-    public OwnerDocsGenerator(Plugin plugin) {
+    public OwnerDocsGenerator(XantamLock plugin) {
         this.plugin = plugin;
     }
 
     public void generate() {
-        File ownerDir = new File(plugin.getDataFolder(), "owners");
-        if (!ownerDir.exists()) ownerDir.mkdirs();
+        File folder = new File(plugin.getDataFolder(), "owner_docs");
+        if (!folder.exists()) folder.mkdirs();
 
-        writeFile(ownerDir, "commands.txt", getCommandsDoc());
-        writeFile(ownerDir, "permissions.txt", getPermissionsDoc());
-        writeFile(ownerDir, "placeholders.txt", getPlaceholdersDoc());
-        writeFile(ownerDir, "modules.txt", getModulesDoc());
-    }
+        File file = new File(folder, "reference.txt");
+        try (FileWriter writer = new FileWriter(file)) {
 
-    private void writeFile(File dir, String filename, String content) {
-        try {
-            FileWriter fw = new FileWriter(new File(dir, filename));
-            fw.write(content);
-            fw.close();
+            writer.write("====== XantamLock Owner Reference ======\n\n");
+
+            // Plugin version
+            writer.write("Plugin Version: " + plugin.getDescription().getVersion() + "\n\n");
+
+            // Economy settings
+            writer.write("Economy:\n");
+            writer.write("  lock-create-cost: " + ConfigManager.getLockCreateCost() + "\n");
+            writer.write("  add-entity-cost: " + ConfigManager.getAddEntityCost() + "\n");
+            writer.write("  convert-to-shop-cost: " + ConfigManager.getConvertToShopCost() + "\n\n");
+
+            // Chat prefix
+            writer.write("Chat:\n");
+            writer.write("  prefix: " + ConfigManager.getChatPrefix() + "\n\n");
+
+            // Database mode
+            writer.write("Database:\n");
+            writer.write("  Mode: " + (ConfigManager.useMySQL() ? "MySQL" : "H2") + "\n\n");
+
+            // Integrations
+            writer.write("Soft Integrations:\n");
+            writer.write("  Vault: " + (plugin.getVaultIntegration().isEnabled() ? "✅ Enabled" : "❌ Disabled") + "\n");
+            writer.write("  Factions3: " + (plugin.getFactionsIntegration().isEnabled() ? "✅ Enabled" : "❌ Disabled") + "\n");
+            writer.write("  PlaceholderAPI: " + (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI") ? "✅ Detected" : "❌ Not Detected") + "\n");
+            writer.write("  ChatControl: " + (plugin.getChatControlHook().isEnabled() ? "✅ Enabled" : "❌ Disabled") + "\n\n");
+
+            // Permissions
+            writer.write("Permissions:\n");
+            writer.write("  xantamlock.admin - Grants full access to all commands (default: OP)\n\n");
+
+            // Commands
+            writer.write("Commands:\n");
+            writer.write("  /lock create <name>        - Create a new lock\n");
+            writer.write("  /lock use <name|this|that> - Switch focus to a lock\n");
+            writer.write("  /lock list                 - View your locks\n");
+            writer.write("  /lock show [name]          - View info about a lock\n");
+            writer.write("  /lock edit name <old> <new> - Rename a lock\n");
+            writer.write("  /lock punch                - Enable single punch mode\n");
+            writer.write("  /lock tool                 - Receive locking tool\n");
+            writer.write("  /lock visualise on|off     - Toggle lock particle display\n\n");
+
+            writer.write("Placeholders (via PlaceholderAPI):\n");
+            writer.write("  %xantamlock_active_name%     - Name of currently focused lock\n");
+            writer.write("  %xantamlock_active_mode%     - Mode of focused lock\n");
+            writer.write("  %xantamlock_active_parts%    - Part count of focused lock\n");
+
+            writer.write("\n========================================\n");
+
         } catch (IOException e) {
-            Bukkit.getLogger().warning("[XantamLock] Failed to write " + filename + ": " + e.getMessage());
+            plugin.getLogger().severe("[XantamLock] Failed to generate owner_docs/reference.txt");
+            e.printStackTrace();
         }
-    }
-
-    private String getCommandsDoc() {
-        return String.join("\n", new String[] {
-            "/lock create <name>",
-            "/lock edit name <old> <new>",
-            "/lock edit password set/remove/edit <value>",
-            "/lock delete <name> yes",
-            "/lock transfer <yourname> <target> <name> yes",
-            "/lock punch",
-            "/lock tool",
-            "/lock list",
-            "/lock show [name]",
-            "/lock use <name|that|this>",
-            "/lock visualise on/off [name]"
-        });
-    }
-
-    private String getPermissionsDoc() {
-        return String.join("\n", new String[] {
-            "xantamlock.command.lock",
-            "xantamlock.admin",
-            "xantamlock.use",
-            "xantamlock.create",
-            "xantamlock.edit",
-            "xantamlock.delete",
-            "xantamlock.transfer"
-        });
-    }
-
-    private String getPlaceholdersDoc() {
-        return String.join("\n", new String[] {
-            "%xantamlock_focused_lock%",
-            "%xantamlock_total_locks%"
-        });
-    }
-
-    private String getModulesDoc() {
-        return String.join("\n", new String[] {
-            "Module 1: Core locking system.",
-            "Module 2: Lock access roles.",
-            "Module 3: Shop support.",
-            "Module 4: Redstone, hoppers, and autoclose."
-        });
     }
 }
