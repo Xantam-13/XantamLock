@@ -1,16 +1,11 @@
 package com.xantamlock.core.lock;
 
-import com.xantamlock.core.XantamLock;
 import com.xantamlock.core.database.LockStorage;
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
-import org.bukkit.entity.Player;
 
-import java.util.\*;
+import java.util.*;
 
 public class LockManager {
 
-```
     private static final Map<UUID, List<Lock>> playerLocks = new HashMap<>();
     private static final Map<UUID, String> focusedLocks = new HashMap<>();
 
@@ -68,10 +63,13 @@ public class LockManager {
         }
     }
 
-    public static Lock getLockByPart(String part) {
-        for (List<Lock> locks : playerLocks.values()) {
-            for (Lock lock : locks) {
-                if (lock.getParts().contains(part)) {
+    /**
+     * Returns the lock that owns this part (e.g., block location string), or null.
+     */
+    public static Lock getLockByPart(String loc) {
+        for (List<Lock> lockList : playerLocks.values()) {
+            for (Lock lock : lockList) {
+                if (lock.getParts().contains(loc)) {
                     return lock;
                 }
             }
@@ -79,22 +77,13 @@ public class LockManager {
         return null;
     }
 
-    public static boolean canAccess(Player player, Lock lock) {
-        UUID playerId = player.getUniqueId();
-        if (lock.getOwner().equals(playerId)) return true;
-        if (lock.getTrustedPlayers().contains(playerId.toString())) return true;
-
-        if (XantamLock.getInstance().getFactionsIntegration().isEnabled()) {
-            OfflinePlayer offline = Bukkit.getOfflinePlayer(playerId);
-            for (String factionId : lock.getTrustedFactions()) {
-                if (XantamLock.getInstance().getFactionsIntegration().isSameFaction(player, offline)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+    /**
+     * Checks if a player is allowed to access a given lock.
+     * For now, only PRIVATE locks restrict access.
+     */
+    public static boolean canAccess(UUID player, Lock lock) {
+        if (lock == null) return false;
+        if (lock.getMode() == LockMode.PUBLIC) return true;
+        return lock.getOwner().equals(player);
     }
-```
-
 }
