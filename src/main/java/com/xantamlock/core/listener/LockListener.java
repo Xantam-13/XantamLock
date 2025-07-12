@@ -1,15 +1,17 @@
 package com.xantamlock.core.listener;
 
-import com.xantamlock.core.XantamLock;
-import com.xantamlock.core.config.ConfigManager;
-import com.xantamlock.core.integration.VaultIntegration;
-import com.xantamlock.core.lock.*;
+import com.xantamlock.core.lock.Lock;
+import com.xantamlock.core.lock.LockFocusTracker;
+import com.xantamlock.core.lock.LockManager;
 import com.xantamlock.core.tool.LockToolHandler;
+import com.xantamlock.core.tool.VisualiserHandler;
+
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -19,9 +21,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.UUID;
 
@@ -29,85 +28,112 @@ public class LockListener implements Listener {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND) return;
+        if (!event.hasBlock()) return;
+
+        Block block = event.getClickedBlock();
+        if (block == null || block.getType() == Material.AIR) return;
 
         Player player = event.getPlayer();
-        Block clicked = event.getClickedBlock();
-        if (clicked == null) return;
+        UUID uuid = player.getUniqueId();
+        String location = serialize(block.getLocation());
 
-        String locString = clicked.getWorld().getName() + "," + clicked.getX() + "," + clicked.getY() + "," + clicked.getZ();
-        UUID playerId = player.getUniqueId();
-
-        // Check if block is part of any lock
-        for (Lock lock : LockManager.getAllLocks()) {
-            if (lock.getParts().contains(locString)) {
-                boolean isOwner = lock.getOwner().equals(playerId);
-                boolean isPublic = lock.getMode() == LockMode.PUBLIC;
-
-                if (!isOwner && !isPublic) {
-                    player.sendMessage(color("&6[XantamLock]&c This block is locked."));
-                    event.setCancelled(true);
-                    return;
-                }
-
-                player.sendMessage(color("&6[XantamLock]&a You accessed lock: '&f" + lock.getName() + "&a'."));
-                TextComponent suggestion = Component.text("[Use]", NamedTextColor.DARK_AQUA)
-                        .clickEvent(ClickEvent.runCommand("/lock use " + lock.getName()))
-                        .hoverEvent(HoverEvent.showText(Component.text("Click to focus this lock")));
-                player.sendMessage(Component.text(" ").append(suggestion));
-                break;
-            }
-        }
-
-        // Punch and tool logic
-        boolean punchMode = LockToolHandler.hasPunch(playerId);
-        boolean toolMode = LockToolHandler.isToolEnabled(playerId);
-
-        if (!punchMode && !toolMode) return;
-
-        if (toolMode) {
-            ItemStack inHand = player.getInventory().getItemInMainHand();
-            if (inHand.getType() != Material.STICK) return;
-
-            ItemMeta meta = inHand.getItemMeta();
-            if (meta == null || !meta.hasLore()) return;
-
-            boolean isLockTool = meta.getLore().stream().anyMatch(s -> s.toLowerCase().contains("lock entities"));
-            if (!isLockTool) return;
-        }
-
-        Lock lock = LockManager.getFocusedLock(playerId);
-        if (lock == null) {
-            player.sendMessage(color("&6[XantamLock]&b You must have a focused lock."));
+        // Handle punch mode
+        if (LockToolHandler.hasPunch(uuid)) {
+            LockToolHandler.consumePunch(uuid);
+            handleAddOrRemove(player, location, block.getType().name(), block.getLocation());
+            event.setCancelled(true);
             return;
         }
 
-        Action action = event.getAction();
-
-        if (action == Action.LEFT_CLICK_BLOCK) {
-            double cost = ConfigManager.getAddEntityCost();
-            VaultIntegration vault = XantamLock.getInstance().getVaultIntegration();
-            if (cost > 0 && vault.isEnabled()) {
-                if (!vault.hasEnough(player.getName(), cost)) {
-                    player.sendMessage(color("&6[XantamLock]&c You can't afford to add this block. Cost: &f" + cost));
-                    return;
-                }
-                if (!vault.withdraw(player.getName(), cost)) {
-                    player.sendMessage(color("&6[XantamLock]&c Payment failed. Cannot add block."));
-                    return;
-                }
+        // Handle tool mode
+        if (LockToolHandler.isToolEnabled(uuid) && isLockingTool(player)) {
+            if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
+                handleAdd(player, location);
+            } else if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                handleRemove(player, location);
             }
-            lock.addPart(locString);
-            player.sendMessage(color("&6[XantamLock]&a Block added to lock '&f" + lock.getName() + "&a'."));
-        } else if (action == Action.RIGHT_CLICK_BLOCK) {
-            lock.removePart(locString);
-            player.sendMessage(color("&6[XantamLock]&c Block removed from lock '&f" + lock.getName() + "&c'."));
+            event.setCancelled(true);
+            return;
         }
 
-        if (punchMode) {
-            LockToolHandler.consumePunch(playerId);
-            player.sendMessage(color("&6[XantamLock]&b Punch mode disabled."));
+        // Lock access logic (always runs)
+        Lock lock = LockManager.getLockByPart(location);
+        if (lock != null) {
+            boolean canAccess = LockManager.canAccess(uuid, lock);
+
+            if (!canAccess && lock.getMode() == com.xantamlock.core.lock.LockMode.PRIVATE) {
+                player.sendMessage(color("&6[XantamLock]&c This is locked: '&f" + lock.getName() + "&c'. You cannot open it."));
+                event.setCancelled(true);
+                return;
+            }
+
+            player.sendMessage(color("&6[XantamLock]&b You opened lock: '&f" + lock.getName() + "&b'."));
+
+            // Offer [Use] if not focused
+            String focused = LockFocusTracker.getFocusedLockId(uuid);
+            if (focused == null || !focused.equals(lock.getId())) {
+                TextComponent useMsg = Component.text(ChatColor.translateAlternateColorCodes('&', "&6[XantamLock] "))
+                        .append(Component.text("You have opened lock: ", NamedTextColor.GRAY))
+                        .append(Component.text(lock.getName(), NamedTextColor.AQUA))
+                        .append(Component.text(" — "))
+                        .append(Component.text("[Use]", NamedTextColor.GREEN)
+                                .clickEvent(ClickEvent.runCommand("/lock use " + lock.getName()))
+                                .hoverEvent(HoverEvent.showText(Component.text("Click to use this lock"))));
+
+                player.sendMessage(useMsg);
+            }
         }
+    }
+
+    private void handleAddOrRemove(Player player, String location, String type, Location loc) {
+        Lock lock = LockManager.getFocusedLock(player.getUniqueId());
+        if (lock == null) {
+            player.sendMessage(color("&6[XantamLock]&c No active lock selected."));
+            return;
+        }
+
+        if (lock.getParts().contains(location)) {
+            lock.removePart(location);
+            player.sendMessage(color("&6[XantamLock]&a Removed " + type + " from lock '&f" + lock.getName() + "&a'."));
+        } else {
+            lock.addPart(location);
+            player.sendMessage(color("&6[XantamLock]&a Added " + type + " to lock '&f" + lock.getName() + "&a'."));
+        }
+    }
+
+    private void handleAdd(Player player, String location) {
+        Lock lock = LockManager.getFocusedLock(player.getUniqueId());
+        if (lock == null) return;
+
+        if (!lock.getParts().contains(location)) {
+            lock.addPart(location);
+            player.sendMessage(color("&6[XantamLock]&a Block added to lock '&f" + lock.getName() + "&a'."));
+        } else {
+            player.sendMessage(color("&6[XantamLock]&b That block is already locked."));
+        }
+    }
+
+    private void handleRemove(Player player, String location) {
+        Lock lock = LockManager.getFocusedLock(player.getUniqueId());
+        if (lock == null) return;
+
+        if (lock.getParts().contains(location)) {
+            lock.removePart(location);
+            player.sendMessage(color("&6[XantamLock]&a Block removed from lock '&f" + lock.getName() + "&a'."));
+        } else {
+            player.sendMessage(color("&6[XantamLock]&b That block is not part of your lock."));
+        }
+    }
+
+    private boolean isLockingTool(Player player) {
+        if (player.getInventory().getItemInMainHand() == null) return false;
+        ItemMeta meta = player.getInventory().getItemInMainHand().getItemMeta();
+        if (meta == null || !meta.hasDisplayName()) return false;
+        return ChatColor.stripColor(meta.getDisplayName()).equalsIgnoreCase("Locking Tool");
+    }
+
+    private String serialize(Location loc) {
+        return loc.getWorld().getName() + "," + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
     }
 
     private String color(String msg) {
