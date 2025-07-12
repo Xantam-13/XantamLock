@@ -26,4 +26,13 @@ public class LockFocusTracker {
     public static boolean hasFocusedLock(UUID player) {
         return focusedLocks.containsKey(player);
     }
+
+    /**
+     * Convenience method to return the actual Lock object being focused on.
+     * Returns null if no lock is focused or lock doesn't exist.
+     */
+    public static Lock getFocusedLock(UUID player) {
+        String lockId = focusedLocks.get(player);
+        return lockId != null ? LockManager.getLockById(player, lockId) : null;
+    }
 }
