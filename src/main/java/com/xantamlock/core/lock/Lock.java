@@ -1,24 +1,32 @@
 package com.xantamlock.core.lock;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Represents a lock owned by a player.
- * A lock can secure multiple parts (blocks/entities) and can be protected with a password.
+ * Represents a secure lock owned by a player.
+ * A lock can have multiple linked blocks/entities ("parts").
  */
 public class Lock {
 
     private final String id;
-    private String name;
     private final UUID owner;
+
+    private String name;
     private LockMode mode;
     private final Set<String> parts = new HashSet<>();
-    private final Set<String> trustedPlayers = new HashSet<>();
-    private final Set<String> trustedFactions = new HashSet<>();
-    private String password = null;
+    private String password;
 
+    /**
+     * Constructs a new Lock.
+     *
+     * @param id    Unique internal ID of the lock.
+     * @param name  Display name of the lock.
+     * @param owner UUID of the owning player.
+     * @param mode  The lock's visibility mode.
+     */
     public Lock(String id, String name, UUID owner, LockMode mode) {
         this.id = id;
         this.name = name;
@@ -30,16 +38,16 @@ public class Lock {
         return id;
     }
 
+    public UUID getOwner() {
+        return owner;
+    }
+
     public String getName() {
         return name;
     }
 
     public void setName(String newName) {
         this.name = newName;
-    }
-
-    public UUID getOwner() {
-        return owner;
     }
 
     public LockMode getMode() {
@@ -50,14 +58,27 @@ public class Lock {
         this.mode = mode;
     }
 
+    /**
+     * Returns an unmodifiable view of all serialized parts.
+     */
     public Set<String> getParts() {
-        return parts;
+        return Collections.unmodifiableSet(parts);
     }
 
+    /**
+     * Adds a serialized block/entity location to this lock.
+     *
+     * @param loc The location string.
+     */
     public void addPart(String loc) {
         parts.add(loc);
     }
 
+    /**
+     * Removes a block/entity from this lock by location.
+     *
+     * @param loc The location string.
+     */
     public void removePart(String loc) {
         parts.remove(loc);
     }
@@ -70,27 +91,11 @@ public class Lock {
         this.password = pw;
     }
 
-    public Set<String> getTrustedPlayers() {
-        return trustedPlayers;
+    public boolean hasPassword() {
+        return password != null && !password.isBlank();
     }
 
-    public Set<String> getTrustedFactions() {
-        return trustedFactions;
-    }
-
-    public void addTrustedPlayer(String uuid) {
-        trustedPlayers.add(uuid);
-    }
-
-    public void removeTrustedPlayer(String uuid) {
-        trustedPlayers.remove(uuid);
-    }
-
-    public void addTrustedFaction(String factionId) {
-        trustedFactions.add(factionId);
-    }
-
-    public void removeTrustedFaction(String factionId) {
-        trustedFactions.remove(factionId);
+    public boolean containsPart(String loc) {
+        return parts.contains(loc);
     }
 }
