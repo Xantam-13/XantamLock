@@ -1,0 +1,16 @@
+chat:
+  prefix: "&6[XantamLock]&f"
+
+database:
+  type: h2 # Options: h2 or mysql
+  mysql:
+    host: localhost
+    port: 3306
+    database: xantamlock
+    username: root
+    password: password
+
+economy:
+  lock-create-cost: 5.0
+  add-entity-cost: 1.0
+  convert-to-shop-cost: 0.0  # Only used if shop module is installed

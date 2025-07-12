@@ -1,0 +1,19 @@
+name: XantamLock
+version: 1.0.0
+main: com.xantamlock.core.XantamLock
+api-version: 1.20
+softdepend: [Vault, Factions3, PlaceholderAPI, ChatControl]
+
+commands:
+  lock:
+    description: Primary command for XantamLock
+    usage: /lock <args>
+    aliases: [l]
+
+permissions:
+  xantamlock.admin:
+    description: Grants full admin access to all XantamLock commands
+    default: op
+  xantamlock.use:
+    description: Allows use of /lock and interaction with locks
+    default: true
